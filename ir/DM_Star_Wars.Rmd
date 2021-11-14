@@ -1,0 +1,407 @@
+---
+title: "DM_Starwars"
+author: "Alexey Shapovalov, id=20235952"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+An essential skill when working with data is the ability to get the data into tidy form, ready for analysis.  You will find that time and time again you need to correct the data and having code ready to do so will save you a lot of time and will keep track on what you have done with the original data.
+
+In this lab you will be introduced to useful tips and tricks to get data into shape.  There are many ways to write code for data management tasks, one of which is using the tidyverse package, a nice collection of tools which are intuitive. 
+
+Let's start by loading the tidyverse package.
+
+
+```{r, results='hide'}
+library(tidyverse)
+
+```
+
+The Star Wars data that you will be working on is contained in the tidyverse package and is called starwars.  This mean that you don't need to load the data in as a separate file. The data comes from SWAPI, the Star Wars API, (have a look at http://swapi.co/).
+
+The data contain the following variables:
+
+- name: Name of the character
+- height: Height (cm)
+- mass: Weight (kg)
+- hair_color: Hair color
+- skin_color: Skin color
+- eye_color: Eye color
+- birth_year: Year born (BBY = Before Battle of Yavin)  
+- gender: male, female, hermaphrodite, or none.  
+- homeworld: Name of homeworld  
+- species: Name of species  
+- film: List of films the character appeared in 
+- vehicles: List of vehicles the character has piloted
+- starships: List of starships the character has piloted
+
+Let's save the data to a dataframe called `starwars.df`, where the `.df` will remind you that it is a dataframe.
+
+```{r }
+
+starwars.df <- starwars
+
+```
+
+There are several ways of viewing a dataset in R; you'll have seen me do this in lectures. One way is to use RStudio's data viewer. To do so, you can: 
+
+- click on the `starwars.df` variable in the "Environment" tab  
+
+Sometimes it's also helpful to look at data (or part of it) in the console instead of the data viewer, particularly for large data sets. 
+
+Here are some useful functions: 
+
+### `head()`
+
+Without any extra arguments specified, `head()` shows the top six rows of the data. 
+
+```{r}
+
+head(starwars.df)
+
+```
+
+### `glimpse()`
+
+`glimpse()` is helpful when the data frame has many columns. The data is shown in a transposed way with columns as rows. 
+
+```{r }
+glimpse(starwars.df)
+```
+
+### `distinct()`
+
+`distinct()` shows all the distinct values for a character or factor column. 
+
+```{r }
+starwars.df %>% 
+  distinct(name)
+```
+
+### `count()`
+
+`count()` shows a count of all the different distinct values in a column. 
+
+```{r }
+starwars.df %>% 
+  count(gender)
+```
+
+It's possible count the number of observations across a combination of several variables. For example, if we wanted to tally gender within species and display the results for the first 10 species we can do it by specifying both variables of interest in `count()` as follows:
+
+
+```{r }
+starwars.df %>% 
+  count(species, gender) %>% 
+  head(n = 10)
+```
+
+Before we can summarise and visualise data there are invariably data 'wrangling' (i.e. cleaning, reshaping, filtering, etc) steps that need to be carried out.  This will be the case in virtually all analyses you carry out as the data will very rarely be clean and fit for purpose.
+
+## Wrangling data 
+
+We use the functions in the package `dplyr` (which loads with `tidyverse`) which contains a lot of useful functions to tidy data. 
+Let's start with filtering where subsets of the data are extracted as required.
+
+### `filter()`
+
+The `filter()` function is used to apply logical (and other) operators to subset the data. 
+
+For example, to filter out the male characters use filter with a double == (a single = is typically used to assign an object) as follows:
+
+```{r }
+
+starwars.df %>% 
+  filter(sex == 'male')
+
+```
+
+We can combine multiple conditions in the same call. In the chink below I've filtered out male characters, whose height is greater than the median height (i.e. they are in the top 50 percentile), and whose body mass was not missing.  Note that missing values in R are represented as `NA` and that an exclamation mark `!` represents 'not'. The function below can be read as 'start with the starwars dataframe then filter out males, and then filter out all males that are bigger than the median height and then filter out those that don't have a missing value for mass.
+
+```{r }
+starwars.df %>% 
+  filter(gender == 'male',
+         height > median(height, na.rm = TRUE),
+         !is.na(mass))
+```
+
+The `na.rm=TRUE` is important.  Many functions like `mean()`, `median()`, `var()`, `sd()`, `sum()` have the argument `na.rm` which tells R what to do in that function when it encounters missing values.  It is set to `FALSE` by default. In the example above it is set to `TRUE` which means that the `NA` values are ignored (i.e. ignore missing data), and the `median()` is calculated based on values that are observed.
+
+Logical operators play an important role in R programming to combine two or more conditions and to perform the logical operations using & (Logical AND), | (Logical OR) and ! (Logical NOT).
+
+The symbol `&` represents AND,	which returns true when both conditions are truewhile the symbol `|`	represents OR,	which returns true when at-least one of the condition is true.
+
+You can use `|` and `&` interchangeably in `filter()`. Make sure to use parentheses when combining several logical operators to indicate which logical operation should be performed first.
+
+See if you can figure out what data are being filtered using the follows commands:
+
+```{r }
+
+starwars.df %>% 
+  filter((skin_color %in% c("dark", "pale") | gender == "hermaphrodite") & height > 170)
+
+```
+
+The commands will filter starwars characters that have either a `"dark"` or a `"pale"` skin tone, or whose gender is `"hermaphrodite"`, and whose height is at least `170` cm. The quotes are important as they are needed to highlight that the values in question are levels of a categorical variable.
+
+The `%in%` operator is useful when there are multiple options you could filter on.  An alternative way to write `skin_color %in% c("dark", "pale")` is to write `skin_color == "dark" | skin_color == "pale"` but this gets cumbersome as the number of options increases. 
+
+```{r }
+
+starwars.df %>% 
+  filter((skin_color == "dark" | skin_color == "pale" | gender == "hermaphrodite") & height > 170)
+
+```
+
+
+Let's look at some other useful functions to rename and create variables.
+
+### `rename()` 
+
+`rename()` renames column names.
+
+```{r }
+starwars.df %>% 
+  rename(person = name,
+         mass_kg = mass)
+```
+
+The new variable names goes on the LHS of the`=` sign, and the old name on the RHS (i.e. new_name = old_name) 
+
+
+### `select()` 
+
+`select()` allows you to select just those variables needed.  
+
+
+```{r }
+starwars.df %>% 
+  select(name, height, mass)
+```
+
+We can select multiple columns using the `(from:to)` syntax. For example, if you only needed the variables from name to birth_year:
+
+```{r }
+starwars.df %>%  
+  select(name:birth_year)
+```
+
+
+We can also _deselect_ (multiple) columns:
+
+```{r }
+starwars.df %>% 
+  select(-name, -(birth_year:vehicles))
+
+```
+
+Other examples include selecting columns by partially matching the column name e.g. every column that contains the character "_"
+
+```{r }
+starwars.df %>% 
+  select(contains("_"))
+```
+
+or every column that starts with an "h"
+
+```{r data-wrangling1-51}
+starwars.df %>% 
+  select(starts_with("h")) 
+```
+
+You can also use `select()` to reorder the columns, for example changing the column order, now eye_color is at the beginning
+
+```{r }
+
+starwars.df %>% 
+  select(eye_color, everything())
+```
+
+Here, the `eye_color` column is moved to the beginning of the data frame. `everything()` is a helper function which selects all the columns. 
+
+To move a variable to the end, start by deselecting it and then moving it.  For example, to move eye_color to the end of the dataframe:
+
+```{r }
+starwars.df %>% 
+  select(-eye_color, everything(), eye_color) 
+```
+
+You can select columns based on their data type using `select_if()`. To select all variables that are numeric:
+
+```{r }
+starwars.df %>% 
+  select_if(is.numeric) 
+```
+
+The `mutate()` function is used to change existing variables or to make new ones.
+
+### `mutate()` 
+
+Let's calculate the Body Mass Index (i.e. kg / (m^2)) for all characters in the dataframe. Start by dividing height by 100 to convert to metres and then divide by height squared (^ is the symbol needed to raise to a power). 
+
+```{r }
+
+starwars.df %>% 
+  mutate(height = height / 100,
+         bmi = mass / (height^2)) %>%
+  select(name, height, mass, bmi)
+
+```
+You have now calculated the bmi for the different starwars characters. The code first mutated the height variable by going from cm to m, and then created the new column "bmi".
+
+A useful helper function for `mutate()` is `ifelse()`. `ifelse()` works in the following way: start by specifying the condition, then what should be returned if the condition is true, and finally what should be returned otherwise. Here is an example: 
+
+```{r }
+
+starwars.df %>% 
+  mutate(height_categorical = ifelse(height > median(height, na.rm = T), "tall", "short")) %>% 
+  select(name, contains("height"))
+
+```
+
+Let's go through this in a bit more detail. The code can be read as 'start with the starwars data then create a new variable called 'height_categorical' where characters with heights bigger than the median are coded as tall otherwise they are coded as small then select all variables that have 'height' in their name.
+
+There are a number of ways to sort and arrange data.
+
+### `arrange()` 
+
+`arrange()` allows you to sort the values in a data frame by one or more column entries. 
+
+```{r }
+
+starwars.df %>% 
+  arrange(hair_color, desc(height))
+
+```
+
+Here, the data frame is sorted first by `hair_color` and then by `height`. Note that the `desc()` function will sort `height` in descending order. 
+
+Have a go at these exercises.  
+
+The solutions will be given at the drop in labs this week.
+
+### Exercise 1 
+
+Use the count function to tally the number of species in each homeworld.
+
+```{r}
+# write your code here 
+starwars.df %>% 
+  count(homeworld)
+
+```
+
+
+### Exercise 2 
+
+Filter out the mass for `male` characters who are `human`.
+
+
+```{r}
+# write your code here 
+starwars.df %>% 
+  filter(sex == 'male' & species == 'Human') %>%
+  select(name, mass) %>%
+  drop_na()
+
+```
+
+
+### Exercise 3
+
+Use the count function to identify the homeworld that has the most characters. (Hint, the count function has an argument called sort which is set to FALSE by default).
+
+```{r }
+# write your code here 
+starwars.df %>%
+  count(homeworld, sort=T) %>%
+  drop_na()
+
+```
+
+### Exercise 4
+
+Which homeworld has characters with the highest mass on average ?
+
+```{r }
+# write your code here 
+starwars.df %>%
+  group_by(homeworld) %>%
+  summarise(avg_mass = mean(mass, na.rm=T)) %>%
+  arrange(desc(avg_mass)) %>%
+  select(homeworld, avg_mass)
+
+```
+
+
+### Exercise 5
+
+Create a new variable called BMI_categorical which classifies characters as 'Below Average BMI' or 'Above Average BMI' depending on whether a character's BMI is smaller (or larger) than the mean BMI.
+
+```{r }
+# write your code here 
+# add bmi and BMI_categorical to starwars.df
+starwars.df <- starwars.df %>% 
+  mutate(height = height / 100, bmi = mass / (height^2)) %>%
+  mutate(BMI_categorical = ifelse(bmi > mean(bmi, na.rm = T), "Below Average BMI", "Above Average BMI"))
+  
+starwars.df %>%
+  select(name, height, mass, bmi, BMI_categorical)
+
+```
+
+### Exercise 6
+
+Create a table of how many characters are 'Below Average BMI' and 'Above Average BMI'.
+
+```{r }
+# write your code here 
+starwars.df %>% 
+  select(name, height, mass, bmi, BMI_categorical) %>%
+  count(BMI_categorical) %>%
+  drop_na()
+
+```
+
+### Exercise 7
+
+Filter out the character that has the highest mass.  Does this character have the highest BMI also?
+
+```{r }
+# write your code here 
+starwars.df %>% 
+  mutate(height = height / 100, bmi = mass / (height^2)) %>%
+  mutate(highest_mass = mass == max(mass, na.rm=T)) %>%
+  mutate(highest_bmi = bmi == max(bmi, na.rm=T)) %>%
+  filter(highest_mass) %>%
+  select(name, height, mass, bmi, highest_mass, highest_bmi)
+
+```
+
+### Exercise 8
+
+A lot of how you will use R is to look up the web for help on how to solve problems.  There are so many resources out there, some are listed at the end of this document. The challenge is to find out how to use the `case_when()` function.  
+
+See if you can use it use the BMI variable to categorise starwars characters using the following rules:
+
+Underweight if BMI <18.5
+Normal weight if BMI is 18.5 to 24.9
+Overweight if BMI is 25 to 29.9
+Obesity if BMI of 30 or greater
+
+```{r }
+# write your code here 
+starwars.df %>% 
+  mutate(height = height / 100, bmi = mass / (height^2)) %>%
+  mutate(BMI_categorical = case_when(
+    bmi < 18.5 ~ "Underweight",
+    bmi >= 18.5 & bmi < 25 ~ "Normal weight",
+    bmi >= 25 & bmi < 30 ~ "Overweight",
+    bmi >= 30 ~ "Obesity"
+  )) %>%
+  select(name, height, mass, bmi, BMI_categorical)
+
+```
+
+
+

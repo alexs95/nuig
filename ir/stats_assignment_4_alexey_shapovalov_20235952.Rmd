@@ -1,0 +1,312 @@
+---
+title: "Stats (2122-ST5001) Assignment 4"
+author: "Alexey Shapovalov, id=20235952"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r, echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(janitor)
+library(table1)
+library(tolerance)
+library(ggplot2)
+library(ggridges)
+library(viridis)
+library(infer)
+
+set.seed(42)
+```
+
+# Introduction
+This document is in request to investigate whether a new design of a website improves two key performance indicators (KPIs) associated with the website. Specifically, the analysis investigates the results of an A/B test carried out to see if there is an improvement in:
+
+1. The visit through time.
+2. The proportion of query items resolved compared to that observed in the current design.
+
+In addition to this, based on the data, the report also provides an estimation to:
+
+1. A random customer will have a visit through time on the new site of less than 2 minutes.
+2. At least 60% of queries on the new site will be resolved in a day where it is assumed that 50 customers visit the site in a day.
+
+# Assumptions
+For the purposes of this analysis, the following assumptions are made about how the experiment was conducted and dataset used:
+
+* Traffic routing between the current website and the proposed variant is implemented **randomly**, for example not based on any factors such a visit time, gender, etc.
+* The visits are **independent** of each other, each row in the data corresponds to a visit that is in no way influenced by any other visit (row).
+
+# Data Exploration
+
+```{r}
+ab.test.df = read.csv(file = 'data/ab_test.csv')
+head(ab.test.df)
+```
+
+```{r}
+tail(ab.test.df)
+```
+
+## Continuous Variable: Time
+
+### Summary Table
+
+```{r}
+table1(~Time|Variant, data=ab.test.df)
+```
+
+
+### Boxplot of visit through time (sec) by variant
+
+```{r, results=FALSE, message=FALSE}
+ab.test.df %>%
+  ggplot(aes(x=Variant, y=Time, fill=Variant)) + 
+    geom_boxplot() +
+    stat_summary(fun=mean, colour="yellow", geom="point", shape=18, size=3) +
+    theme(legend.position = "none")
+
+```
+
+### Raincloud of visit through time (sec) by variant
+
+```{r, results=FALSE, message=FALSE}
+ab.test.df %>%
+  ggplot(aes(x=Time,  y=Variant,  fill=..x..)) +
+    geom_density_ridges_gradient(jittered_points=TRUE, position="raincloud", alpha=0.7, scale=0.9) +
+    scale_fill_viridis(name="Time (sec)", option="E") +
+    labs(
+      x="Visit through time (sec)", y=""
+    )
+```
+
+### Subjective Impressions
+
+* Based on both the box plot and the raincloud plot it looks like the samples follow a normal distribution.
+* It looks like there is a decrease in visit through time when presented with the new variant.
+
+## Discrete Variable: Resolved
+
+### Summary Table
+
+```{r}
+table1(~Resolved|Variant, data=ab.test.df)
+```
+
+### Proportion of resolved queries by variant
+
+```{r}
+ab.test.df %>%
+  ggplot() +
+  geom_bar(aes(Resolved, fill=Variant),  position="fill") +
+  labs(y="Proportion of Visitors", x="Resolved Queries")
+```
+
+### Subjective Impressions
+* Based on both the stacked bar chart and table it does not look like there is a massive difference in the proportion of queries that were resolved.
+* That said it appears the current website seems to have a slightly higher proprotion of queries resolved compared to the new variant.
+
+
+# Estimations
+This section uses the data to provide an estimate to the probability that:
+
+1. A random customer will have a visit through time on the new site of less than 2 minutes.
+2. At least 60% of queries on the new site will be resolved in a day where it is assumed that 50 customers visit the site in a day.
+
+
+```{r}
+# Based on Data Exploration > Continuous Variable: Time > Summary Table
+mean = 206
+sd = 45
+pnorm(120, mean=mean, sd=sd)
+```
+
+* As the sample looks normally distributed, the estimate is that there is a **2.8%** chance that a random customer will have a visit through time of less than 2 minutes on the new site.
+
+```{r}
+# Based on Data Exploration > Discrete Variable: Resolved Summary table
+size = 50 # number of customers that visit each day (number of trials)
+prob = 0.49 # probability that query is resolved (probability of event occurring)
+lower = as.integer(50 * .6) # lower bound of the number of queries resolved (number events that need to occur)
+sum(dbinom(x=lower:50, size=50, prob=0.49))
+```
+
+* As the sample looks normally distributed, the estimate is that there is a **7.8%** chance that at least 60% of queries will be resolved in a day where it is assumed that 50 customers visit the site in a day on the new site.
+
+
+# Improved visit through time?
+This section contains a formal analysis, based on the data, to decide whether the new site is better than the current site in terms of an **improved (average) visit through time**. An assumption is made that an improvement corresponds to a decrease in the visit through time. This is done using two methods:
+
+1. Interval Estimation (classical and bootstrap)
+2. Hypothesis Testing
+
+
+## Interval Estimation
+
+* The idea behind interval estimation is to provide a range of plausible values for a statistic, based on the sample, rather than just simply calculating the statistic of the sample and using that single value.
+* According to the Central Limit Theorem if you have a large enough sample the distribution of the sample mean is well approximated by a Normal distribution.
+* We also know from the empirical rule of the Normal distribution that approximately 95% of data that follow a normal distribution are within 2 times the standard deviation from the mean.
+* Based on these two points, it is possible to say that a 95% confidence interval ensures that, in repeated sampling, 95% of intervals produced will contain the true (but unknown) population parameter.
+
+### Classical: T-Test
+
+* Using the intuitions above the statistic for which the 95% confidence interval is calculated is the difference in means between the control and test groups.
+* With this statistic we can make an estimate as to whether the visit through time has, **on average**, increased, stayed the same, or decreased between the control and test group.
+
+```{r}
+t.test(Time ~ Variant, conf.level=0.95, data=ab.test.df)
+```
+
+* Based on a 95% confidence interval, on average, it is **likely** that there is a **decrease** in the visit through in the population of B by between 36.3 and 59.4 when compared to the population of A.
+
+### Bootstrap Comparison 
+* The idea behind the bootstrap method is to repeatedly generate samples, **with replacement**, from the sample that we have.
+* The target statistic is then generated for each of these samples.
+* Based on the ideas above this distribution of the sample statistic should follow a normal distribution.
+* By using the difference of means as the statistic, it allows us to estimate whether the visit through time has, **on average**, increased, stayed the same, or decreased between the control and test group.
+
+#### Difference of means
+
+```{r}
+ab.boot.mean.df <- ab.test.df %>%
+  specify(response = Time, explanatory = Variant) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "diff in means", order=c("B","A"))
+
+ab.boot.mean.percentile_ci <- get_ci(ab.boot.mean.df)
+ab.boot.mean.percentile_ci
+```
+
+* Again, seeing very similar results to the classical approach.
+* Based on a 95% confidence interval, the difference in means between the populations of A and B is a **decrease** in B by between 37.6 and 59.9.
+
+#### Difference of medians
+
+```{r}
+ab.boot.median.df <- ab.test.df %>%
+  specify(response = Time, explanatory = Variant) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "diff in medians", order=c("B","A"))
+
+ab.boot.median.percentile_ci <- get_ci(ab.boot.median.df)
+ab.boot.median.percentile_ci
+```
+
+* Based on a 95% confidence interval, the difference in medians between the populations of A and B is a **decrease** in B by between 29.3 and 60.0.
+* Based on the Data Exploration section it does not seem that normality is a concern as both samples look normally distributed. However, this further backs up that there is a decrease, on average, in the visit through time by using the median statistic.
+
+### Tolerence Intervals
+
+#### A: Current Website (Control)
+
+```{r}
+ab.test.df %>%
+  filter(Variant %in% "A") %>%
+  select(Time) %>%
+  pull() %>%
+  normtol.int(alpha=0.05, P=0.95, side=2)
+```
+
+#### B: New Design (Test)
+
+```{r}
+ab.test.df %>%
+  filter(Variant %in% "B") %>%
+  select(Time) %>%
+  pull() %>%
+  normtol.int(alpha=0.05, P=0.95, side=2)
+```
+
+#### Interpretation
+* A random visitor of the current website is likely (95% chance) to have a visit through time between 170.1 and 337.2. Furthermore a visitor is very unlikely to have a visit through time of less than 170.1 and more than 337.2.
+* A random visitor to the new variant of the website is likely (95% chance) to have a visit through time of between 105.3 and 306.4 seconds.  Furthermore a visitor is very unlikely to have a visit through time of less than 170.1 and more than 337.2.
+
+### Conclusion
+* As observed from both the bootstrap method and the classical t-test method it is possible to say that the visit through time is likely to have **decreased** by around **36 to 60 seconds** when visitors are presented the new design.
+* As this is based on a 95% confidence interval, although very likely, the above statement is still an estimate and may not be the case in reality.
+* Since the KPI is to decrease the visit through time it is **likely** that the new variant is successful in this regard.
+
+## Hypothesis Testing
+* In addition to the assumptions in the section "Assumptions" an extra assumption is made that the population follows a normal distribution. However, based on the Data Exploration section is is suggestive that this is the case.
+* The idea behind hypothesis testing to make a claim (the null hypothesis), assume that it is correct and see if the data collected is consistent with this claim.
+* To do this, a second hypothesis is also necessary, specifically the setup is that this hypothesis is such that it must be true if the null hypothesis is false.
+* Through a specific test statistic a p-value is calculated that essentially says how probable it would be to observe the data collected "as or more extreme than the data actually collected if, in fact, the Null Hypothesis was true."
+* Based on a pre-determined threshold for the p-value, known as the statistical significance level, a judgement can be made of whether there is sufficient evidence to support the alternative claim and as such reject the null hypothesis.
+* The null hypothesis in this case is that the difference of means in the visit through time variable between variant A and B is equal to 0, i.e. mean(A) - mean(B) = 0.
+* The alternative hypothesis in this case is that the difference of means in the visit through time variable between variant A and B is less than 0, i.e. mean(A) - mean(B) != 0.
+* The significance level used is the default of 0.05.
+
+```{r}
+t.test(
+  Time ~ Variant,
+  mu=0,
+  alternative="two.sided",
+  conf.level=0.95,
+  data=ab.test.df
+)
+```
+
+### Conclusion
+* The test rejects the null hypothesis, as the 95% confidence interval yields a p-value far less than 0.05.
+* If the null hypothesis is true than it is highely **unlikely** that we would observe the samples that we did observe.
+* Although we are able to prove that the difference of means is **likely** to not be same, we do not know in which direction they are different (-/+).
+
+
+# Improve proportion of query items resolved?
+This section provides a formal analysis, based on the data, to decide whether the new site is better than the current version in terms of the **proportion of query items resolved**. This is done using two methods:
+
+1. Interval Estimation (classical and bootstrap)
+2. Hypothesis Testing
+
+## Interval Estimatation
+The logic and intuition behind the mechanism of how this works is the exact same as in the "Section Improve visit through time?" with the key difference being that the comparison made is a difference in **proportions** rather than means or medians.
+
+### Classical: T-test
+
+```{r}
+prop.test(x=c(52, 49), n=c(100,100), conf.level=0.95)
+```
+
+* Based on 95% confidence interval, there is **not enough evidence** to support the proportion of resolved query items between the **populations** of A and B has changed.
+* This is because the difference in proportions crosses the 0 mark, i.e. within the 95% confidence interval there is a 0% difference in proportions.
+
+### Bootstrap Comparison
+
+```{r}
+ab.prop.boot.df <- ab.test.df %>%
+  specify(response=Resolved, success="Yes", explanatory=Variant) %>%
+  generate(reps = 1000, type="bootstrap") %>%
+  calculate(stat="diff in props", order=c("B","A"))
+
+ab.prop.boot.percentile_ci <- get_ci(ab.prop.boot.df)
+ab.prop.boot.percentile_ci
+```
+
+* Again, seeing very similar results to the classical approach.
+* Based on the 95% confidence interval, the difference in proportions is between -0.18 and 0.11. This crosses the 0 mark and as such, it is unlikely that a difference in proportions exists in the **population**.
+
+### Conclusion
+* As observed from both the bootstrap method and the classical t-test method it is possible to say that there is not enough evidence that proportion of query items resolved has changed.
+* As this is based on a 95% confidence interval, although very likely, the above statement is still an estimate and may not be the case in reality.
+* Since the KPI is to increase the proprotion of query items resolved it is **unlikely** the the new variant is successful in this regard.
+
+## Hypothesis Testing
+* The logic and intuition behind this method is the same as in the section "Improved visit through time?" with a key difference being the statistic is the difference in proportions rather than means.
+* The null hypothesis in this case is that the difference of means in the visit through time variable between variant A and B is equal to 0, i.e. mean(A) - mean(B) = 0.
+* The alternative hypothesis in this case is that the difference of means in the visit through time variable between variant A and B is less than 0, i.e. mean(A) - mean(B) < 0.
+* This hypothesis can be interpreted as testing if the sample supports if the visit through time, on average, is less in B than in A.
+
+```{r}
+
+prop.test(x=c(52, 49), n=c(100,100), 
+          alternative = "two.sided", 
+          conf.level = 0.95)
+```
+
+### Conclusion
+* The test does not reject the null hypothesis, as the 95% confidence interval yields a p-value of above 0.05.
+* If the null hypothesis is true than it is likely that we would observe the samples that we did observe.
+* The result is that the difference in proportions of query items resolved is **unlikely** to be different given the data the samples observed.
+
+# Overall Conclusion & Recommendation
+* The overall conclusion is that the new variation appears to improve the performance of the first KPI where it is likely that there is a decrease in visit through time.
+* However the proportion of resolved query items remains unaffected. This means that the second KPI was not improved.
+* My overall recommendation would be to go ahead with the new design, while the proportion of query items remained unchanged, it did not decrease in performance! As such the first KPI is improved without any decrease in the second KPI.
