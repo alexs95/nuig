@@ -1,8 +1,7 @@
+from encoder import encoder_block
 from keras.api import keras
 from keras import layers
 import tensorflow as tf
-
-from encoder import encoder_block
 
 
 class WGAN(keras.Model):
@@ -18,6 +17,7 @@ class WGAN(keras.Model):
     ):
         super(WGAN, self).__init__()
         self.discriminator = self.get_discriminator(img_shape)
+        self.discriminator.summary()
         self.generator = generator
         self.latent_size = latent_size
         self.discriminator_steps = discriminator_extra_steps
@@ -29,9 +29,7 @@ class WGAN(keras.Model):
         img_input = layers.Input(shape=shape)
         x = encoder_block(img_input)
         x = layers.Dense(1)(x)
-        d_model = keras.models.Model(img_input, x, name="discriminator")
-        d_model.summary()
-        return d_model
+        return keras.models.Model(img_input, x, name="discriminator")
 
     def gradient_penalty(self, batch_size, real_images, fake_images):
         """ Calculates the gradient penalty.
