@@ -1,7 +1,7 @@
 from generator import generative_model
 from monitor import ModelMonitor
 from keras.api import keras
-from vae import get_vae
+from vae import get_autoencoder
 from wgan import WGAN
 import tensorflow as tf
 
@@ -28,7 +28,7 @@ generator = generative_model(IMG_SHAPE, LATENT_SIZE)
 
 # VAE Method =================================================================
 vae_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
-vae, encoder = get_vae(IMG_SHAPE, LATENT_SIZE, generator)
+vae, encoder = get_autoencoder(IMG_SHAPE, LATENT_SIZE, generator)
 vae.compile(vae_optimizer)
 callback = ModelMonitor(VAE_PATH, generator, latent_size=LATENT_SIZE)
 vae.fit(dataset.map(lambda x: (x, x)), callbacks=[callback], epochs=EPOCHS)

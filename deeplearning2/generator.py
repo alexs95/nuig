@@ -3,7 +3,7 @@ from keras import layers
 import keras
 
 
-def generative_model(img_shape, latent_size):
+def generative_model(latent_size):
     noise = layers.Input(shape=(latent_size,))
     x = layers.Dense(4 * 4 * 256, use_bias=False)(noise)
     x = layers.BatchNormalization()(x)
@@ -38,5 +38,3 @@ def generative_model(img_shape, latent_size):
     x = layers.Cropping2D((2, 2))(x)
 
     return keras.models.Model(noise, x, name="generator")
-
-

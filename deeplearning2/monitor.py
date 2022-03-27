@@ -17,7 +17,7 @@ class ModelMonitor(keras.callbacks.Callback):
         os.makedirs(path + '/epochs', exist_ok=True)
         os.makedirs(path + '/checkpoints', exist_ok=True)
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch, logs=None, show_frequency=1):
         random_latent_vectors = tf.random.normal(shape=(self.size * self.size, self.latent_size))
         generated_images = self.generator(random_latent_vectors)
         generated_images = (generated_images * 127.5) + 127.5
@@ -29,5 +29,6 @@ class ModelMonitor(keras.callbacks.Callback):
         )
         plt.figure(figsize=(8, 8))
         plt.imsave('{}/epochs/{}.png'.format(self.path, epoch), grid, cmap='gray', vmin=0, vmax=255)
-        plt.imshow(grid, cmap='gray', vmin=0, vmax=255)
-        plt.show()
+        if epoch % show_frequency == 0:
+            plt.imshow(grid, cmap='gray', vmin=0, vmax=255)
+            plt.show()
